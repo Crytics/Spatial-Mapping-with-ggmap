@@ -8,6 +8,47 @@
 # Description : Exe ggmap
 ###################################
 
+#Reference
+#http://cran.r-project.org/web/packages/spatstat/vignettes/shapefiles.pdf
+
+#Clear Environment
+rm(list = ls(all = TRUE)) 
+
+#Set Directory
+setInternet2(TRUE)
+myfolder <- "C:/Users/adam.nguyen/Desktop/Useful R/"
+setwd(myfolder)
+source(paste(c(myfolder,"library.R"),collapse="")) #Get library
+
+#Read shape file
+#JPN.spdf <- readOGR("C:/Users/adam.nguyen/Desktop/JPN_adm/JPN_adm0.shp",layer="JPN_adm0" ,stringsAsFactors = TRUE)
+
+shape <- readShapeSpatial("C:/Users/adam.nguyen/Desktop/JPN_adm/JPN_adm0.shp")
+
+str(shape)
+class(shape)
+
+#Convert to Spatstat format
+library(spatstat)
+df <- shape@data
+str(df)
+shape2 <- as(shape, "owin")
+str(shape2)
+
+shape.regions <- lapply(shape, function(x) {SpatialPolygons(list(x))})
+shape.windows <- lapply(shape, as.owin)
+
+
+#Convert to tessellation object for convenience
+te <- tess(tiles=windows)
+ch <- hyperframe(window=shape2)
+ch <- cbind.hyperframe(ch, shape@data)
+
+#Plot shape file
+plot(shape, xlab="Latitude", ylab="Longitude")
+
+############
+
 #Clear Environment
 rm(list = ls(all = TRUE)) 
 
