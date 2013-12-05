@@ -5,7 +5,7 @@
 # Updated by  : Adam Nguyen
 # Created at  : 11/07/2013
 # Updated at  : xx/xx/xxxx
-# Description : Exe ggmap
+# Description : Execute ggmap
 ###################################
 
 #Reference
@@ -47,7 +47,7 @@ ch <- cbind.hyperframe(ch, shape@data)
 #Plot shape file
 plot(shape, xlab="Latitude", ylab="Longitude")
 
-############
+############Notes/Scratch Work
 
 #Clear Environment
 rm(list = ls(all = TRUE)) 
@@ -346,4 +346,3 @@ data <- fortify(shapefile)
 qmap("texas", zoom = 6, maptype = "satellite") +
   geom_polygon(aes(x = long, y = lat, group = group), data = data,
                colour = "white", fill = "black", alpha = .4, size = .3)
-
