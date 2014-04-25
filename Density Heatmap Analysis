@@ -1,0 +1,160 @@
+###################################
+# Geometric Targeting Analysis
+# ---------------------------------
+# Started by  : Adam Nguyen
+# Updated by  : Adam Nguyen
+# Created at  : 11/07/2013
+# Updated at  : 04/20/2014
+# Description : Execute ggmap
+###################################
+
+#Reference
+#http://cran.r-project.org/web/packages/spatstat/vignettes/shapefiles.pdf
+
+#Clear Environment
+#rm(list = ls(all = TRUE))
+
+#Names of working directory and files
+myfolder <- "C:/Users/adam.nguyen/Desktop/teradataR/"
+
+#Set Directory
+setInternet2(TRUE)
+Sys.setenv(language = "en", tz = 'UTC')
+options(max.print = 1000)
+setwd(myfolder)
+source(paste(c("C:/Users/adam.nguyen/Desktop/GH/", "library.R"), collapse = "")) #Get library
+source(paste(c("C:/Users/adam.nguyen/Desktop/GH/", "break_munging.txt"), collapse = "")) #Get tools
+
+#Additional libraries
+library(spatstat)
+library(RODBC)
+
+#Establish Teradata and SQL Server Connection
+#RShowDoc(“teradataR”, package = “teradataR”) 
+Teradata.Connect <- tdConnect("Teradata2750")
+dc <- odbcConnect(dsn = "RSQL")
+
+
+#Query Teradata for data
+data.zip <- tdQuery("select * from dev_bisp.ua_adam_geo")
+names(data.zip)
+
+#Create SQL Query for data
+query <-"
+  set transaction isolation level read uncommitted
+  select * from prefecture_map
+  "
+
+#Create SQL Server Query for Prefecture Table
+query.sql <- "select * from prefecture_map"
+data.sql <- sqlQuery(dc, query.sql)
+
+
+#From Internal
+data.csv <- read.table("C:/Users/adam.nguyen/Desktop/ggmap/zipdata.txt"
+          , header = TRUE
+          , sep = "\t"
+          , na.strings = c(".", "NA", "", "?")
+          , strip.white = TRUE
+          , encoding = "UTF-8")
+
+
+#Extract Lon and Lat Coordinates
+str(data.zip)
+head(data.zip)
+head(data.sql)
+
+data.merge <- merge(data.zip, data.sql, by.x = "prefecture", by.y = "pref_code")
+data.merge$pref_name <- NULL
+head(data.merge)
+dim(data.merge)
+unique(data.merge["pref_name_eng"])
+
+
+#Merge data by zipcode
+data.merge <- merge(data.csv, data.zip, by.x = "Zip_code", by.y = "zipcode")
+str(data.merge)
+
+#Check for data integrity
+data.zip[which(data.zip$zipcode == "100-0003"), ]
+data.merge[which(data.merge$Zip_code == "100-0003"), ]
+
+
+#Confirm tables of data sources
+#Teradata
+length(data.zip$zipcode)
+length(unique(data.zip$zipcode))
+#SQL Server
+length(data.merge$Zip_code)
+length(unique(data.merge$Zip_code))
+#Internal
+length(data.csv$Zip_code)
+length(unique(data.csv$Zip_code))
+
+
+#Create coordinate table by extracting from Google Map's API
+data.key <- unique(data.merge[, 1])
+code.table <- NULL
+for (i in 1:length(data.key)){
+  code <- geocode(as.character(data.key[i]))
+  code.table <- rbind(code.table, code)
+}
+key.zip <- cbind(data.key, code.table)
+
+
+#write.csv(key.zip, "key.zip.csv")
+key.zip <- read.table("C:/Users/adam.nguyen/Desktop/teradataR/key.zip.csv"
+          , header = TRUE
+          , sep = ","
+          , na.strings = c(".", "NA", "", "?")
+          , strip.white = TRUE
+          , encoding = "UTF-8")
+key.zip[, 1] <- NULL
+
+
+names(key.zip)[1] <- "Zip_code"
+data.join <- join(data.merge, key.zip, by = "Zip_code", type = "left", match = "all")
+
+write.csv(data.join, "temp3.csv")
+
+#Import map from Google API
+data.geocode <- geocode("tokyo") #Rakuten Tower 1: 140-0002
+
+#Create density layer
+names(data.join)
+data.layer <- data.join[, c("lon", "lat", "GMS_Feb")]
+
+#Aggregate by zipcode and target variable
+data.layer.aggregate <- aggregate(data.layer, by = list(data.layer$lat, data.layer$lon), FUN = sum, na.rm = TRUE)
+
+#Read shape file (DO NOT RUN DATA)
+data.shape <- readShapeSpatial("C:/Users/adam.nguyen/Desktop/ggmap/JPN_adm/JPN_adm1.shp"
+                        , proj4string = CRS("+proj=longlat +datum=WGS84"))
+
+data.layer.aggregate <- data.layer.aggregate[, c(1, 2, 5)]
+
+#Fortify shape file
+data.fortified <- fortify(data.shape)
+
+#Get map with target point
+data.map <- get_map(location = c(median(data.layer$lon), median(data.layer$lat))
+                , zoom = 12
+                , scale = 'auto'
+                , maptype = 'roadmap'
+                , source = 'google'
+                )
+
+#Add density layers onto map
+(ggmap(data.map, extent = "device", maprange = FALSE)
+#+ geom_polygon(aes(x = long, y = lat, group = group), data = data.fortified, colour = 'white', fill = 'black', alpha = .2, size = .5)
++ theme(legend.position = "none", axis.title = element_blank(), text = element_text(size = 12))
++ geom_density2d(data = data.layer, aes(x = data.layer.aggregate[, 2], y = data.layer.aggregate[,1])) 
++ stat_density2d(data = data.layer, aes(x = data.layer.aggregate[, 2], y = data.layer.aggregate[,1]
+    , fill = ..level.., alpha = ..level..), size = 1, bins = 10, geom = c('polygon')) 
++ scale_fill_gradient(low = "blue", high = "red") 
++ scale_alpha(range = c(0.15, 0.25), guide = FALSE) 
++ coord_map(projection = "mercator" 
+    , xlim = c(attr(data.map, "bb")$ll.lon, attr(data.map, "bb")$ur.lon)
+    , ylim = c(attr(data.map, "bb")$ll.lat, attr(data.map, "bb")$ur.lat)) 
+)
+
